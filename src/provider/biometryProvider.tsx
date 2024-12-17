@@ -6,7 +6,7 @@ import React, {
   useEffect,
   ReactNode,
 } from "react";
-import { initBiometryManager, on } from "@telegram-apps/sdk";
+import { initBiometryManager, on, type BiometryManager } from "@telegram-apps/sdk";
 
 interface BiometryContextType {
   isAvailable: boolean;
@@ -19,7 +19,7 @@ interface BiometryContextType {
   supportRequestAccess: boolean;
   biometryType: string | undefined;
   clearToken: () => Promise<boolean>; // 添加清除 Token 方法
-  authenticate: () => Promise<string | null>;
+  authenticate: () => Promise<string | undefined>;
   updateToken: (token: string) => Promise<boolean>;
   requestAccess: () => Promise<boolean>;
   openSetting: () => Promise<void>;
@@ -31,7 +31,7 @@ const BiometryContext = createContext<BiometryContextType | null>(null);
 export const BiometryProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
-  const [biometryManager, setBiometryManager] = useState<any>(null);
+  const [biometryManager, setBiometryManager] = useState<null | BiometryManager>(null);
   const [isAvailable, setIsAvailable] = useState(false);
   const [granted, setGranted] = useState(false);
   const [requested, setRequested] = useState(false);
@@ -49,27 +49,65 @@ export const BiometryProvider: React.FC<{ children: ReactNode }> = ({
       console.log("Viewport changed:", payload);
       alert(payload);
     });
-    removeListener();
+    // removeListener();
+    const removeBiometryAuthRequestListeners = on(
+      "biometry_auth_requested",
+      ({ status, token }) => {
+        console.log("Biometry authentication request complete:", status, token);
+      }
+    );
+
+    const removeBiometryInfoListeners = on(
+      "biometry_info_received",
+      (result) => {
+        if (result.available) {
+          const {
+            available,
+            access_requested,
+            access_granted,
+            device_id,
+            token_saved,
+            type,
+          } = result;
+          console.log(
+            "Biometry settings were received:",
+            available,
+            access_requested,
+            access_granted,
+            device_id,
+            token_saved,
+            type
+          );
+        } else {
+          console.log("Biometry settings were received:", result.available);
+        }
+      }
+    );
+      return ()=>{
+        removeBiometryAuthRequestListeners()
+        removeBiometryInfoListeners()
+      }
   }, []);
 
   useEffect(() => {
     const initializeBiometry = async () => {
       try {
-        const [bm] = await initBiometryManager();
-        // (await bm).on("change:available", (value: boolean) => {
+        const [bm] = initBiometryManager();
+        const bmInstance = await bm
+        // bmInstance.on("change:available", (value: boolean) => {
         //   alert(value);
         //   console.log(value);
         // });
-        setBiometryManager(bm);
-        setBiometryType((await bm).biometryType);
-        setSupportAuth((await bm).supports("auth"));
-        setSupportOpenSetting((await bm).supports("openSettings"));
-        setSupportUpdateToken((await bm).supports("requestAccess"));
-        setSetRequested((await bm).supports("updateToken"));
-        setTokenSaved((await bm).tokenSaved);
-        setIsAvailable((await bm).available);
-        setGranted((await bm).accessGranted);
-        setRequested((await bm).accessRequested);
+        setBiometryManager(bmInstance);
+        setBiometryType(bmInstance.biometryType);
+        setSupportAuth(bmInstance.supports("auth"));
+        setSupportOpenSetting(bmInstance.supports("openSettings"));
+        setSupportUpdateToken(bmInstance.supports("requestAccess"));
+        setSetRequested(bmInstance.supports("updateToken"));
+        setTokenSaved(bmInstance.tokenSaved);
+        setIsAvailable(bmInstance.available);
+        setGranted(bmInstance.accessGranted);
+        setRequested(bmInstance.accessRequested);
 
         const handleAccessChange = (value: boolean) => {
           console.log(123123);
@@ -77,26 +115,26 @@ export const BiometryProvider: React.FC<{ children: ReactNode }> = ({
           setGranted(value);
         };
         console.log(
-          (await bm).on("change:accessGranted", handleAccessChange),
+          bmInstance.on("change:accessGranted", handleAccessChange),
           "123"
         );
 
-        (await bm).on("change:accessGranted", handleAccessChange);
+        bmInstance.on("change:accessGranted", handleAccessChange);
       } catch (error) {
         console.error("BiometryManager 初始化失败:", error);
       }
     };
 
     initializeBiometry();
+
+
   }, []);
 
   // Authenticate method
-  const authenticate = async (): Promise<string | null> => {
-    if (!(await biometryManager)) return null;
+  const authenticate = async (): Promise<string | undefined> => {
+    if (!(biometryManager)) return undefined;
     try {
-      const result = await (
-        await biometryManager
-      ).authenticate({
+      const result = await biometryManager.authenticate({
         reason: "请通过生物识别验证",
       });
 
@@ -104,19 +142,19 @@ export const BiometryProvider: React.FC<{ children: ReactNode }> = ({
     } catch (error) {
       alert("openerror");
       console.error("Biometry authentication failed:", error);
-      return null;
+      return undefined;
     }
   };
 
   // Update token method
   const updateToken = async (token: string): Promise<boolean> => {
-    if (!(await biometryManager)) {
+    if (!biometryManager) {
       alert("wrong");
       return false;
     }
 
     try {
-      const result = await (await biometryManager).updateToken({ token });
+      const result = await biometryManager.updateToken({ token });
       if (result) {
         setTokenSaved(true);
       }
@@ -130,22 +168,24 @@ export const BiometryProvider: React.FC<{ children: ReactNode }> = ({
 
   // Request access method
   const requestAccess = async () => {
-    if (await biometryManager) {
-      const request = await (await biometryManager).requestAccess();
+    if (biometryManager) {
+      const request = await biometryManager.requestAccess();
       return request;
+    }else{
+      return false
     }
   };
   const openSetting = async () => {
-    if (await biometryManager) {
-      const opening = await (await biometryManager).openSettings();
+    if (biometryManager) {
+      const opening = await biometryManager.openSettings();
       return opening;
     }
   };
 
   const clearToken = async (): Promise<boolean> => {
-    if (!(await biometryManager)) return false;
+    if (!biometryManager) return false;
     try {
-      await (await biometryManager).updateToken();
+      await biometryManager.updateToken();
       setTokenSaved(false);
       return true; // 清除成功
     } catch (error) {
