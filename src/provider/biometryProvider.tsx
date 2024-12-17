@@ -44,11 +44,11 @@ export const BiometryProvider: React.FC<{ children: ReactNode }> = ({
   const [onEvent, setOnEvent] = useState<any>();
 
   useEffect(() => {
-    const removeListener = on("biometry_info_received", (payload) => {
-      setOnEvent(onEvent);
-      console.log("Viewport changed:", payload);
-      alert(payload);
-    });
+    // const removeListener = on("biometry_info_received", (payload) => {
+    //   setOnEvent(onEvent);
+    //   console.log("Viewport changed:", payload);
+    //   alert(JSON.stringify(payload));
+    // });
     // removeListener();
     const removeBiometryAuthRequestListeners = on(
       "biometry_auth_requested",
@@ -110,16 +110,12 @@ export const BiometryProvider: React.FC<{ children: ReactNode }> = ({
         setRequested(bmInstance.accessRequested);
 
         const handleAccessChange = (value: boolean) => {
-          console.log(123123);
-
+          console.log("change:accessGranted",value);
           setGranted(value);
         };
-        console.log(
-          bmInstance.on("change:accessGranted", handleAccessChange),
-          "123"
-        );
 
         bmInstance.on("change:accessGranted", handleAccessChange);
+        bmInstance.on("change:biometryType", (value) => console.log("change:biometryType",value));
       } catch (error) {
         console.error("BiometryManager 初始化失败:", error);
       }
